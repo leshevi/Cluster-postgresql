@@ -1,0 +1,57 @@
+---
+
+stages:
+  - deploy
+  - restart
+  - destroy
+
+.job_inj:
+  before_script:
+    - apk update && apk add openssh-client rsync
+    - eval $(ssh-agent -s)
+    - echo "$SSH_ROOT_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+    - ssh-keyscan -t ed25519 ${MY} >> ~/.ssh/known_hosts
+    - chmod 600 ~/.ssh
+
+
+deploy_cluster:
+  stage: deploy
+  tags:
+    - Docker
+  when: manual
+  only:
+    refs:
+      - main
+  extends: .job_inj
+  script:
+    - export DOCKER_HOST="ssh://${CI_SSH_USERNAME}@${MY}"
+    - docker compose up -d
+
+restart_cluster:
+  stage: restart
+  tags:
+    - Docker
+  when: manual
+  only:
+    refs:
+      - main
+  extends: .job_inj
+  script:
+    - export DOCKER_HOST="ssh://${CI_SSH_USERNAME}@${MY}"
+    - docker compose up -d --force-recreate
+
+destroy_cluster:
+  stage: destroy
+  tags:
+    - Docker
+  when: manual
+  only:
+    refs:
+      - main
+  extends: .job_inj
+  script:
+    - export DOCKER_HOST="ssh://${CI_SSH_USERNAME}@${MY}"
+    - docker compose -f docker-compose.yml down
+
+
