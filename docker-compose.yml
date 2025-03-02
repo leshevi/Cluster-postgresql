@@ -1,0 +1,139 @@
+---
+services:
+  pg-1:
+    container_name: postgres_1
+    image: bitnami/postgresql-repmgr
+    ports:
+      - "6432:5432"
+    volumes:
+      - pg_1_data:/bitnami/postgresql
+      - ./create_extensions.sql:/docker-entrypoint-initdb.d/create_extensions.sql:ro
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=1972OVSP1961
+      - POSTGRESQL_USERNAME=habrpguser
+      - POSTGRESQL_PASSWORD=1972ovsp1961
+      - POSTGRESQL_DATABASE=habrdb
+      - REPMGR_PASSWORD=repmgrpassword
+      - REPMGR_PRIMARY_HOST=pg-1
+      - REPMGR_PRIMARY_PORT=5432
+      - REPMGR_PARTNER_NODES=pg-1,pg-2:5432
+      - REPMGR_NODE_NAME=pg-1
+      - REPMGR_NODE_NETWORK_NAME=pg-1
+      - REPMGR_PORT_NUMBER=5432
+      - REPMGR_CONNECT_TIMEOUT=1
+      - REPMGR_RECONNECT_ATTEMPTS=2
+      - REPMGR_RECONNECT_INTERVAL=1
+      - REPMGR_MASTER_RESPONSE_TIMEOUT=5
+    restart: unless-stopped
+    networks:
+      - postgres-ha
+  pg-2:
+    container_name: postgres_2
+    image: bitnami/postgresql-repmgr
+    ports:
+      - "6433:5432"
+    volumes:
+      - pg_2_data:/bitnami/postgresql
+      - ./create_extensions.sql:/docker-entrypoint-initdb.d/create_extensions.sql:ro
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=1972OVSP1961
+      - POSTGRESQL_USERNAME=habrpguser
+      - POSTGRESQL_PASSWORD=1972ovsp1961
+      - POSTGRESQL_DATABASE=habrdb
+      - REPMGR_PASSWORD=repmgrpassword
+      - REPMGR_PRIMARY_HOST=pg-1
+      - REPMGR_PRIMARY_PORT=5432
+      - REPMGR_PARTNER_NODES=pg-1,pg-2:5432
+      - REPMGR_NODE_NAME=pg-2
+      - REPMGR_NODE_NETWORK_NAME=pg-2
+      - REPMGR_PORT_NUMBER=5432
+      - REPMGR_CONNECT_TIMEOUT=1
+      - REPMGR_RECONNECT_ATTEMPTS=2
+      - REPMGR_RECONNECT_INTERVAL=1
+      - REPMGR_MASTER_RESPONSE_TIMEOUT=5
+    restart: unless-stopped
+    networks:
+      - postgres-ha
+
+  pg_exporter-1:
+    container_name: pg_exporter_1
+    image: prometheuscommunity/postgres-exporter
+    command: --log.level=debug
+    environment:
+      DATA_SOURCE_URI: "pg-1:5432/habrdb?sslmode=disable"
+      DATA_SOURCE_USER: habrpguser
+      DATA_SOURCE_PASS: pgpwd4habr
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
+    volumes:
+      - ./queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9187:9187"
+    networks:
+      - postgres-ha
+    restart: unless-stopped
+    depends_on:
+      - pg-1
+
+  pg_exporter-2:
+    container_name: pg_exporter_2
+    image: prometheuscommunity/postgres-exporter
+    command: --log.level=debug
+    environment:
+      DATA_SOURCE_URI: "pg-2:5432/habrdb?sslmode=disable"
+      DATA_SOURCE_USER: habrpguser
+      DATA_SOURCE_PASS: pgpwd4habr
+      PG_EXPORTER_EXTEND_QUERY_PATH: "/etc/postgres_exporter/queries.yaml"
+    volumes:
+      - ./queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9188:9187"
+    networks:
+      - postgres-ha
+    restart: unless-stopped
+    depends_on:
+      - pg-2
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    restart: unless-stopped
+    user: '0'
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: 1972vosp1961
+      GF_SERVER_DOMAIN: ${MY}
+      GF_SERVER_ROOT_URL: http://${MY}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - 3000:3000
+    volumes:
+      - /home/ansible/grafana/grafana:/var/lib/grafana
+    networks:
+      - postgres-ha
+
+  prometheus:
+    image: prom/prometheus
+    restart: always
+    user: "1000:1000"
+    ports:
+      - 9090:9090
+    volumes:
+      - /home/ansible/prometheus/conf:/etc/prometheus/
+      - /home/ansible/prometheus/data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1d
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=0.0.0.0:9090
+      - --web.external-url=http://${MY}:9090/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+    networks:
+      - postgres-ha
+
+networks:
+  postgres-ha:
+    driver: bridge
+
+volumes:
+  pg_1_data:
+  pg_2_data:
